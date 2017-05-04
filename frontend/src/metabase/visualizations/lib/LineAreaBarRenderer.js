@@ -789,22 +789,13 @@ function fillMissingValues(datas, xValues, fillValue, getKey = (v) => v) {
     }
 }
 
-// Crossfilter calls toString on each moment object, which calls format(), which is very slow.
-// Replace toString with a function that just returns the unparsed ISO input date, since that works
-// just as well and is much faster
-let HACK_parseTimestamp = (value, unit, warn) => {
+let parseTimestampWithWarn = (value, unit, warn) => {
     if (value == null) {
         warn(NULL_DIMENSION_WARNING);
         return null;
     } else {
-        let m = parseTimestamp(value, unit);
-        m.toString = moment_fast_toString
-        return m;
+        return parseTimestamp(value, unit);
     }
-}
-
-function moment_fast_toString() {
-    return this._i;
 }
 
 function makeIndexMap(values: Array<Value>): Map<Value, number> {
@@ -868,7 +859,7 @@ export default function lineAreaBar(element, { series, onHoverChange, onVisualiz
             let newRow = [
                 // don't parse as timestamp if we're going to display as a quantitative scale, e.x. years and Unix timestamps
                 (isDimensionTimeseries && !isQuantitative) ?
-                    HACK_parseTimestamp(row[0], s.data.cols[0].unit, warn)
+                    parseTimestampWithWarn(row[0], s.data.cols[0].unit, warn)
                 : isDimensionNumeric ?
                     row[0]
                 :

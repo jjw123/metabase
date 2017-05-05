@@ -34,6 +34,7 @@ import { formatValue } from "metabase/lib/formatting";
 import { parseTimestamp } from "metabase/lib/time";
 
 import { datasetContainsNoResults } from "metabase/lib/dataset";
+import { addOrUpdateFilter } from "metabase/qb/lib/actions";
 
 import type { Series, ClickObject } from "metabase/meta/types/Visualization"
 
@@ -102,7 +103,7 @@ function initChart(chart, element) {
     chart.transitionDuration(0);
     // if the chart supports 'brushing' (brush-based range filter), disable this since it intercepts mouse hovers which means we can't see tooltips
     if (chart.brushOn) {
-        chart.brushOn(false);
+        chart.brushOn(true);
     }
 }
 
@@ -838,7 +839,17 @@ function forceSortedGroupsOfGroups(groupsOfGroups: CrossfilterGroup[][], indexMa
 }
 
 
-export default function lineAreaBar(element, { series, onHoverChange, onVisualizationClick, onRender, chartType, isScalarSeries, settings, maxSeries }) {
+export default function lineAreaBar(element, {
+    series,
+    onHoverChange,
+    onVisualizationClick,
+    onRender,
+    chartType,
+    isScalarSeries,
+    settings,
+    maxSeries,
+    onChangeCardAndRun
+}) {
     const colors = settings["graph.colors"];
 
     const isTimeseries = settings["graph.x_axis.scale"] === "timeseries";
@@ -1022,11 +1033,27 @@ export default function lineAreaBar(element, { series, onHoverChange, onVisualiz
     let parent = dc.compositeChart(element);
     initChart(parent, element);
 
+    // workaround for the filter handler firing on mouse move rather than mouse up
+    let filter = null;
+    parent.on('renderlet', (chart) => {
+        chart.svg().on("mouseup", () => {
+            if (filter) {
+                onChangeCardAndRun(addOrUpdateFilter(series[0].card, filter));
+            }
+        });
+    });
+
     let charts = groups.map((group, index) => {
         let chart = dc[getDcjsChartType(chartType)](parent);
 
         // disable clicks
         chart.onClick = () => {};
+
+        // fires on mouse move
+        chart.addFilterHandler((filters, [start, end]) => {
+            filter = ["BETWEEN", series[0].data.cols[0].id, moment(start).format(), moment(end).format()]
+            return filters;
+        });
 
         chart
             .dimension(dimension)

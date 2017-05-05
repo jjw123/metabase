@@ -10,6 +10,8 @@ import * as Filter from "metabase/lib/query/filter";
 import { startNewCard } from "metabase/lib/card";
 import { isDate, isState, isCountry } from "metabase/lib/schema_metadata";
 
+import { updateIn } from "icepick";
+
 import type { Card as CardObject } from "metabase/meta/types/Card";
 import type { TableMetadata } from "metabase/meta/types/Metadata";
 import type { StructuredQuery, FieldFilter } from "metabase/meta/types/Query";
@@ -69,9 +71,25 @@ export const filter = (card, operator, column, value) => {
     return newCard;
 };
 
-const drillFilter = (card, value, column) => {
-    let newCard = clone(card);
+export const addOrUpdateFilter = (card, filter) => {
+    // replace existing filter, if it exists
+    let filters = Query.getFilters(card.dataset_query.query);
+    for (let index = 0; index < filters.length; index++) {
+        if (
+            Filter.isFieldFilter(filters[index]) &&
+            Field.getFieldTargetId(filters[index][1]) ===
+                Field.getFieldTargetId(filter[1])
+        ) {
+            return updateIn(card, ["dataset_query", "query"], query =>
+                Query.updateFilter(query, index, filter));
+        }
+    }
+    // otherwise add a new filter
+    return updateIn(card, ["dataset_query", "query"], query =>
+        Query.addFilter(query, filter));
+};
 
+const drillFilter = (card, value, column) => {
     let filter;
     if (isDate(column)) {
         filter = [
@@ -88,28 +106,7 @@ const drillFilter = (card, value, column) => {
         filter = ["=", getFieldClauseFromCol(column), value];
     }
 
-    // replace existing filter, if it exists
-    let filters = Query.getFilters(newCard.dataset_query.query);
-    for (let index = 0; index < filters.length; index++) {
-        if (
-            Filter.isFieldFilter(filters[index]) &&
-            Field.getFieldTargetId(filters[index][1]) === column.id
-        ) {
-            newCard.dataset_query.query = Query.updateFilter(
-                newCard.dataset_query.query,
-                index,
-                filter
-            );
-            return newCard;
-        }
-    }
-
-    // otherwise add a new filter
-    newCard.dataset_query.query = Query.addFilter(
-        newCard.dataset_query.query,
-        filter
-    );
-    return newCard;
+    return addOrUpdateFilter(card, filter);
 };
 
 const UNITS = ["minute", "hour", "day", "week", "month", "quarter", "year"];
